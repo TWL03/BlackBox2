@@ -11,8 +11,12 @@
       font-family: sans-serif;
       text-align: center;
     }
-    h1 { margin-top: 0.5em; }
-    #controls-top, #controls-bottom { margin: 1em; }
+    h1 {
+      margin-top: 0.5em;
+    }
+    #controls-top, #controls-bottom {
+      margin: 1em;
+    }
     canvas {
       display: block;
       margin: 0 auto;
@@ -26,13 +30,13 @@
 </head>
 <body>
   <h1>Laser Reflection Simulation</h1>
+  <!-- 此处只保留隐藏对象的选择，下拉列表中选择隐藏对象 -->
   <div id="controls-top">
     <label for="shapeSelect">Hidden Object:</label>
     <select id="shapeSelect">
-      <option value="combo_notched">Combo Notched Object</option>
-      <option value="complex_notched">Complex Notched Object</option>
-    </select>
-    <label><input type="checkbox" id="showObject"> Show Hidden Object</label>
+        <option value="complex_notched">Object 1</option>
+        <option value="combo_notched">Object 2</option>
+      </select>      
   </div>
   <canvas id="simCanvas" width="800" height="800"></canvas>
   <div id="controls-bottom">
@@ -45,7 +49,6 @@
     const canvas = document.getElementById("simCanvas");
     const ctx = canvas.getContext("2d");
     const shapeSelect = document.getElementById("shapeSelect");
-    const showObject = document.getElementById("showObject");
     const rotationSlider = document.getElementById("rotationSlider");
     const rotationLabel = document.getElementById("rotationLabel");
 
@@ -59,9 +62,15 @@
     const laserOrigin = [0, -1.25];
     const laserDir = [0, 1];
 
-    function toRadians(deg) { return deg * Math.PI / 180; }
-    function wc_to_cc(x, y) { return [CENTER_X + x * SCALE, CENTER_Y - y * SCALE]; }
-    function dot([a, b], [c, d]) { return a * c + b * d; }
+    function toRadians(deg) { 
+      return deg * Math.PI / 180; 
+    }
+    function wc_to_cc(x, y) { 
+      return [CENTER_X + x * SCALE, CENTER_Y - y * SCALE]; 
+    }
+    function dot([a, b], [c, d]) { 
+      return a * c + b * d; 
+    }
     function normalize([x, y]) {
       const mag = Math.hypot(x, y);
       return mag < EPSILON ? [0, 0] : [x / mag, y / mag];
@@ -75,6 +84,7 @@
       return [x * cos - y * sin, x * sin + y * cos];
     }
 
+    // 判断点是否在多边形内部（同时靠近边界在一定 buffer 内也认为在内）
     function isPointInsidePolygonStrict(point, polygon, buffer = EPSILON * 10) {
       const [x, y] = point;
       let inside = false;
@@ -104,6 +114,7 @@
       return inside;
     }
 
+    // 计算射线与线段 (p1, p2) 的交点
     function intersect(p0, dir, p1, p2) {
       const v1 = [p0[0] - p1[0], p0[1] - p1[1]];
       const v2 = [p2[0] - p1[0], p2[1] - p1[1]];
@@ -118,6 +129,7 @@
       return null;
     }
 
+    // 计算射线与圆的交点（从 origin 沿 dir，与半径为 radius 的圆的交点）
     function intersectCircle(origin, dir, radius) {
       const [ox, oy] = origin;
       const [dx, dy] = normalize(dir);
@@ -127,10 +139,15 @@
       const disc = b * b - 4 * a * c;
       if (disc < 0) return null;
       const sqrtD = Math.sqrt(disc);
-      const t = Math.min(...[(-b + sqrtD), (-b - sqrtD)].filter(t => t > EPSILON)) / (2 * a);
+      const validTs = [(-b + sqrtD), (-b - sqrtD)]
+                        .filter(t => t > EPSILON)
+                        .map(t => t / (2 * a));
+      if (validTs.length === 0) return null;
+      const t = Math.min(...validTs);
       return [ox + t * dx, oy + t * dy];
     }
 
+    // 计算激光反射路径，若途中有路径穿过隐藏对象内部，则予以过滤
     function reflectLaser(shape) {
       let origin = [...laserOrigin], dir = [...laserDir];
       const points = [origin];
@@ -175,6 +192,7 @@
       return points;
     }
 
+    // 原有的组合凹槽形状（Combo Notched Object）
     function shape_combo_notched_complex() {
       const convexTop = 0.2, concaveBottom = 0.2, n = 50;
       const top = Array.from({ length: n }, (_, i) => {
@@ -188,11 +206,23 @@
       return top.concat([[0.5, 0.5], [0.2, 0.2], [0.5, -0.5]], bottom, [[-0.5, -0.5], [-0.5, 0.5]]);
     }
 
+    // 不规则凹槽形状（Complex Notched Object）：使用各个顶点不同的外内半径
     function shape_complex_notched() {
-      return [[-0.5, 0.5], [-0.2, 0.6], [0, 0.4], [0.2, 0.6], [0.5, 0.5],
-              [0.5, 0], [0.3, -0.2], [0.5, -0.5], [0, -0.3], [-0.5, -0.5], [-0.3, -0.2], [-0.5, 0]];
+      function toRadians(deg) { return deg * Math.PI / 180; }
+      const numPoints = 5;
+      const outerRadii = [0.5, 0.55, 0.45, 0.6, 0.4];
+      const innerRadii = [0.25, 0.2, 0.3, 0.22, 0.28];
+      const points = [];
+      for (let i = 0; i < numPoints; i++) {
+        const outerAngle = toRadians(-90 + i * (360 / numPoints));
+        const innerAngle = toRadians(-90 + (i + 0.5) * (360 / numPoints));
+        points.push([outerRadii[i] * Math.cos(outerAngle), outerRadii[i] * Math.sin(outerAngle)]);
+        points.push([innerRadii[i] * Math.cos(innerAngle), innerRadii[i] * Math.sin(innerAngle)]);
+      }
+      return points;
     }
 
+    // 绘制外环和内盘刻度
     function drawScale(radius, angleDeg, majorSize, labelSize) {
       ctx.strokeStyle = "white";
       ctx.lineWidth = 1;
@@ -202,15 +232,20 @@
       ctx.stroke();
       for (let deg = -180; deg <= 180; deg += 5) {
         const rad = toRadians(deg + angleDeg - 90);
-        const tick = deg % 10 === 0 ? majorSize : 0.02;
+        const tick = (deg % 10 === 0) ? majorSize : 0.02;
         const r1 = radius, r2 = radius - tick;
         const [x1, y1] = wc_to_cc(r1 * Math.cos(rad), r1 * Math.sin(rad));
         const [x2, y2] = wc_to_cc(r2 * Math.cos(rad), r2 * Math.sin(rad));
-        ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(x1, y1);
+        ctx.lineTo(x2, y2);
+        ctx.stroke();
         if (deg % 10 === 0 && deg !== -180) {
           const [lx, ly] = wc_to_cc((radius - 0.12) * Math.cos(rad), (radius - 0.12) * Math.sin(rad));
-          ctx.fillStyle = "white"; ctx.font = `${labelSize}px sans-serif`;
-          ctx.textAlign = "center"; ctx.textBaseline = "middle";
+          ctx.fillStyle = "white";
+          ctx.font = `${labelSize}px sans-serif`;
+          ctx.textAlign = "center";
+          ctx.textBaseline = "middle";
           ctx.fillText(`${deg}°`, lx, ly);
         }
       }
@@ -220,64 +255,63 @@
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       const angleDeg = parseFloat(rotationSlider.value);
       const angleRad = toRadians(angleDeg);
-      rotationLabel.textContent = showObject.checked ? `${angleDeg.toFixed(1)}°` : "";
+      rotationLabel.textContent = `${angleDeg.toFixed(1)}°`;
 
+      // 绘制外环和内盘
       drawScale(OUTER_RADIUS, 0, 0.05, 16);
       drawScale(PLATE_RADIUS, angleDeg, 0.05, 14);
 
-      const baseShape = shapeSelect.value === "complex_notched" ? shape_complex_notched() : shape_combo_notched_complex();
+      // 根据下拉列表选择隐藏对象形状，并按旋转角度旋转
+      const baseShape = shapeSelect.value === "complex_notched" ?
+                          shape_complex_notched() : shape_combo_notched_complex();
       const rotated = baseShape.map(p => rotatePoint(p, angleRad));
 
-      if (showObject.checked) {
-        ctx.strokeStyle = "white"; ctx.lineWidth = 2; ctx.beginPath();
-        rotated.forEach(([x, y], i) => {
-          const [cx, cy] = wc_to_cc(x, y);
-          if (i === 0) ctx.moveTo(cx, cy); else ctx.lineTo(cx, cy);
-        });
-        ctx.closePath(); ctx.stroke();
-      }
-
-      const ray = reflectLaser(rotated);
-      ctx.strokeStyle = "red"; ctx.lineWidth = 2;
-      if (showObject.checked) {
-        ctx.beginPath(); const [sx, sy] = wc_to_cc(ray[0][0], ray[0][1]); ctx.moveTo(sx, sy);
-        for (let i = 1; i < ray.length; i++) {
-          const [x, y] = wc_to_cc(ray[i][0], ray[i][1]); ctx.lineTo(x, y);
-        }
+      // 绘制初始光路：从 outer plate（laserOrigin）沿激光方向射出，
+      // 与内盘（半径为 PLATE_RADIUS）的圆相交的交点
+      const entry = intersectCircle(laserOrigin, laserDir, PLATE_RADIUS);
+      if (entry) {
+        const [sx, sy] = wc_to_cc(laserOrigin[0], laserOrigin[1]);
+        const [ex, ey] = wc_to_cc(entry[0], entry[1]);
+        ctx.strokeStyle = "red";  // 设置为红色
+        ctx.beginPath();
+        ctx.moveTo(sx, sy);
+        ctx.lineTo(ex, ey);
         ctx.stroke();
-      } else {
-        const entry = intersectCircle(laserOrigin, laserDir, PLATE_RADIUS);
-        if (entry) {
-          const [sx, sy] = wc_to_cc(laserOrigin[0], laserOrigin[1]);
-          const [ex, ey] = wc_to_cc(entry[0], entry[1]);
-          ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(ex, ey); ctx.stroke();
-          const [cx, cy] = wc_to_cc(0, 0);
-          ctx.fillStyle = "white"; ctx.font = "bold 100px sans-serif";
-          ctx.textAlign = "center"; ctx.textBaseline = "middle";
-          ctx.fillText("?", cx, cy);
-        }
+        // 在内盘中央绘制问号作为标识
+        const [cx, cy] = wc_to_cc(0, 0);
+        ctx.fillStyle = "white";
+        ctx.font = "bold 100px sans-serif";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText("?", cx, cy);
       }
 
+      // 计算激光反射后的路径（隐藏对象仍不显示）
+      const ray = reflectLaser(rotated);
       if (ray.length > 0) {
+        // 绘制激光最终光点（添加随机抖动效果）
         const final = ray[ray.length - 1];
         const [fx, fy] = wc_to_cc(final[0], final[1]);
         const jitterX = (Math.random() - 0.5) * 8;
         const jitterY = (Math.random() - 0.5) * 8;
-        ctx.fillStyle = "red"; ctx.beginPath();
-        ctx.arc(fx + jitterX, fy + jitterY, 4, 0, 2 * Math.PI); ctx.fill();
+        ctx.fillStyle = "red";
+        ctx.beginPath();
+        ctx.arc(fx + jitterX, fy + jitterY, 4, 0, 2 * Math.PI);
+        ctx.fill();
       }
     }
 
-    function loop() { drawScene(); requestAnimationFrame(loop); }
+    function loop() {
+      drawScene();
+      requestAnimationFrame(loop);
+    }
 
     shapeSelect.addEventListener("change", drawScene);
     rotationSlider.addEventListener("input", drawScene);
-    showObject.addEventListener("change", drawScene);
     loop();
   </script>
 </body>
 </html>
-
 
 
 
